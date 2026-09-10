@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ular Sawah - Game Ekosistem & Pengendalian Hama Biologi</title>
+    <!-- Tailwind CSS for modern responsive UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sawah: {
+                            50: '#f4fbf7',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                            950: '#052e16',
+                        },
+                        paddy: '#eab308'
+                    },
+                    fontFamily: {
+                        game: ['Fredoka', 'sans-serif'],
+                        sans: ['Plus Jakarta Sans', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome for visual icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts for typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        // Web Audio API Sound Generator for retro/arcade audio feedback & background music
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.bgmStep = 0;
+                this.bgmTimer = null;
+                this.isPlayingBGM = false;
+                this.bpm = 116; // Tempo musik permainan
+            }
+            
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // Procedural Background Music (BGM) Synthesizer Loop
+            startBGM() {
+                this.init();
+                if (this.isPlayingBGM || !this.enabled) return;
+                this.isPlayingBGM = true;
+                this.bgmStep = 0;
+
+                const stepDuration = (60 / this.bpm) / 4 * 1000; // 16th note step interval in ms
+                this.bgmTimer = setInterval(() => {
+                    this.playBgmStep();
+                }, stepDuration);
+            }
+
+            stopBGM() {
+                this.isPlayingBGM = false;
+                if (this.bgmTimer) {
+                    clearInterval(this.bgmTimer);
+                    this.bgmTimer = null;
+                }
+            }
+
+            playBgmStep() {
+                if (!this.enabled || !this.ctx) return;
+
+                const step = this.bgmStep % 16;
+                const now = this.ctx.currentTime;
+
+                // 1. Bassline (A minor, F, C, G chord progression)
+                const bar = Math.floor((this.bgmStep / 16) % 4);
+                const bassFreqs = [110, 87.31, 130.81, 98.00]; // Note: A2, F2, C3, G2
+                if (step % 2 === 0) {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(bassFreqs[bar], now);
+                    gain.gain.setValueAtTime(0.08, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.18);
+                }
+
+                // 2. Melody Lead (Upbeat Paddy Pentatonic Arcade Melody)
+                const melodyPattern = [
+                    220, 0, 329.63, 261.63, 392, 0, 329.63, 0,
+                    440, 392, 329.63, 293.66, 261.63, 293.66, 329.63, 0,
+                    261.63, 0, 329.63, 392, 440, 0, 523.25, 440,
+                    392, 329.63, 293.66, 261.63, 220, 261.63, 293.66, 329.63
+                ];
+
+                const note = melodyPattern[this.bgmStep % melodyPattern.length];
+                if (note > 0) {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(note, now);
+                    gain.gain.setValueAtTime(0.04, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                }
+
+                // 3. Percussion / Hi-Hat Tick
+                if (step % 2 === 1 || step % 4 === 0) {
+                    const bufferSize = this.ctx.sampleRate * 0.02;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'highpass';
+                    filter.frequency.value = 6000;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.015, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+
+                    noise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    noise.start(now);
+                }
+
+                this.bgmStep++;
+            }
+
+            playEat() {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.12);
+            }
+
+            playLevelUp() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                [400, 520, 660, 880].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.2);
+                });
+            }
+
+            playBitten() {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(60, this.ctx.currentTime + 0.35);
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.35);
+            }
+
+            playQuizCorrect() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.25, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.3);
+                });
+            }
+
+            playQuizWrong() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                [220, 200, 180, 140].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.2);
+                });
+            }
+        }
+        const sfx = new SoundFX();
+    </script>
+
+    <!-- START / MAIN MENU SCREEN -->
+    <div id="startScreen" class="fixed inset-0 z-40 flex flex-col items-center justify-center p-4 bg-sawah-900/90 backdrop-blur-md overflow-y-auto">
+        <div class="max-w-xl w-full bg-sawah-800/90 border-2 border-sawah-400/50 rounded-3xl p-6 md:p-8 shadow-2xl text-center relative overflow-hidden pulse-glow my-auto">
+            
+            <!-- Decorative Header Banner -->
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sawah-500/30 border border-sawah-300/40 text-sawah-200 text-sm font-semibold mb-4">
+                <i class="fa-solid => fa-leaf text-paddy"></i> Game Edukasi Ekosistem Sawah
+            </div>
+
+            <h1 class="text-4xl md:text-5xl font-extrabold font-game text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-green-300 to-emerald-400 drop-shadow-md mb-2">
+                ULAR SAWAH
+            </h1>
+            <p class="text-xs md:text-sm text-sawah-200 mb-6 max-w-md mx-auto">
+                Kendalikan Ular Sawah pemangsa tikus! Bertumbuhlah menjadi lebih besar ala <i>Feeding Frenzy</i> dan pelajari peran vital pemangsa alami dalam rantai makanan persawahan.
+            </p>
+
+            <!-- Player Input Form -->
+            <div class="space-y-4 mb-6 text-left">
+                <div>
+                    <label for="playerName" class="block text-xs font-bold uppercase tracking-wider text-sawah-200 mb-1">
+                        <i class="fa-solid fa-user-graduate text-emerald-400 mr-1"></i> Nama Murid / Siswa:
+                    </label>
+                    <input type="text" id="playerName" placeholder="Masukkan nama kamu di sini..." 
+                           class="w-full px-4 py-3 bg-sawah-950 border-2 border-sawah-400 rounded-xl text-white placeholder-sawah-300 focus:outline-none focus:border-yellow-400 font-bold text-lg transition-all" style="color: #ffffff !important; background-color: #052e16 !important;">
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                <button id="btnStartGame" onclick="startGame()" class="w-full py-3.5 px-6 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-game font-bold text-xl rounded-xl shadow-lg transform active:scale-95 transition-all flex items-center justify-center gap-2 border border-emerald-300/40">
+                    <i class="fa-solid fa-play"></i> MULAI MAIN
+                </button>
+                <button onclick="openLeaderboard()" class="w-full py-3.5 px-6 bg-sawah-700/80 hover:bg-sawah-600 text-sawah-100 font-game font-bold text-lg rounded-xl shadow border border-sawah-500/50 transform active:scale-95 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-trophy text-yellow-400"></i> PAPAN NILAI
+                </button>
+            </div>
+
+            <!-- Eco Info Card -->
+            <div class="bg-sawah-900/70 p-4 rounded-2xl border border-sawah-600 text-left text-xs text-sawah-200 leading-relaxed flex items-start gap-3">
+                <div class="bg-yellow-500/20 text-yellow-400 p-2.5 rounded-xl text-lg flex-shrink-0 mt-0.5">
+                    <i class="fa-solid fa-shield-cat"></i>
+                </div>
+                <div>
+                    <span class="font-bold text-yellow-300 block mb-0.5">Aturan Ekosistem Sawah:</span>
+                    Makan tikus kecil untuk berkembang pesat. Hati-hati dengan Musang! Jika Ular termakan, kamu harus menjawab soal <b>Pengendalian Hama Biologi</b> dengan benar untuk dapat bangkit kembali! (Maksimal 3x Kesempatan).
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME HUD OVERLAY (In-Game) -->
+    <div id="gameHud" class="fixed top-0 left-0 right-0 z-20 p-3 md:p-4 pointer-events-none hidden flex flex-wrap justify-between items-center gap-2">
+        <!-- Player Info & Hearts -->
+        <div class="flex items-center gap-3 bg-sawah-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-sawah-500/40 shadow-xl pointer-events-auto">
+            <div class="flex flex-col">
+                <div class="text-xs text-sawah-300 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <span id="hudPlayerName" class="text-white text-sm font-extrabold">Pemain</span>
+                    <span id="hudTierBadge" class="bg-emerald-600/60 text-emerald-200 text-[10px] px-2 py-0.5 rounded-md border border-emerald-400/30">Tier 1</span>
+                </div>
+                <!-- Revive Hearts -->
+                <div id="heartContainer" class="flex gap-1 text-red-500 text-sm mt-0.5">
+                    <i class="fa-solid fa-heart"></i>
+                    <i class="fa-solid fa-heart"></i>
+                    <i class="fa-solid fa-heart"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feeding Frenzy Growth Progress Bar -->
+        <div class="flex-1 max-w-xs md:max-w-md bg-sawah-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-sawah-500/40 shadow-xl pointer-events-auto">
+            <div class="flex justify-between text-xs font-bold mb-1">
+                <span class="text-sawah-200 flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-dots text-yellow-400"></i> Ukuran Ular:</span>
+                <span id="growthLabel" class="text-yellow-300">Ular Cilik</span>
+            </div>
+            <div class="w-full h-3 bg-sawah-950 rounded-full overflow-hidden p-0.5 border border-sawah-600">
+                <div id="growthBar" class="h-full bg-gradient-to-r from-yellow-500 via-emerald-400 to-green-300 rounded-full transition-all duration-300" style="width: 10%;"></div>
+            </div>
+        </div>
+
+        <!-- Score & Controls -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <div class="bg-sawah-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-sawah-500/40 shadow-xl text-right">
+                <div class="text-[10px] text-sawah-300 font-bold uppercase">SKOR PERMAINAAN</div>
+                <div id="scoreDisplay" class="text-2xl font-game font-extrabold text-yellow-300">0</div>
+            </div>
+            <button onclick="toggleAudio()" id="btnAudioToggle" class="w-10 h-10 bg-sawah-800/90 hover:bg-sawah-700 text-sawah-200 rounded-xl border border-sawah-500/40 flex items-center justify-center transition-all shadow">
+                <i class="fa-solid fa-volume-high"></i>
+            </button>
+            <button onclick="pauseGame()" class="w-10 h-10 bg-sawah-800/90 hover:bg-sawah-700 text-sawah-200 rounded-xl border border-sawah-500/40 flex items-center justify-center transition-all shadow">
+                <i class="fa-solid fa-pause"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- CANVAS ELEMENT -->
+    <canvas id="gameCanvas" class="w-full h-full absolute inset-0 cursor-crosshair"></canvas>
+
+    <!-- QUIZ MODAL (Pengendalian Hama Biologi - 5 Pilihan Ganda) -->
+    <div id="quizModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden">
+        <div class="max-w-2xl w-full bg-sawah-900 border-2 border-yellow-500/60 rounded-3xl p-6 md:p-8 shadow-2xl relative text-left my-auto max-h-[90vh] overflow-y-auto">
+            
+            <div class="flex items-center justify-between pb-4 mb-4 border-b border-sawah-700">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-2xl border border-red-500/40 flex items-center justify-center text-2xl font-bold">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold font-game text-yellow-300">Ular Dimakan Musang!</h3>
+                        <p class="text-xs text-sawah-300">Jawab soal berikut dengan benar untuk melanjutkan permainan!</p>
+                    </div>
+                </div>
+                <span id="quizReviveCount" class="px-3 py-1 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-full text-xs font-bold">
+                    Kesempatan: 3/3
+                </span>
+            </div>
+
+            <!-- Question Text -->
+            <div class="mb-6">
+                <span class="inline-block px-2.5 py-1 bg-sawah-800 text-yellow-300 text-xs font-bold rounded-md mb-2 border border-sawah-600">
+                    Materi: Pengendalian Hama Biologi
+                </span>
+                <p id="quizQuestion" class="text-base md:text-xl font-bold text-white leading-relaxed tracking-wide">
+                    Loading soal...
+                </p>
+            </div>
+
+            <!-- 5 Answer Options -->
+            <div id="quizOptions" class="space-y-2.5 mb-6">
+                <!-- Dynamic choices populated in JS -->
+            </div>
+
+            <!-- Feedback / Result Box -->
+            <div id="quizFeedback" class="hidden p-4 rounded-xl text-sm mb-4 leading-relaxed font-semibold"></div>
+
+            <div class="flex justify-end gap-3">
+                <button id="btnSubmitQuiz" onclick="checkQuizAnswer()" class="py-3 px-8 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-game font-bold text-lg rounded-xl shadow-lg transform active:scale-95 transition-all">
+                    Jawab Sekarang <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+                <button id="btnContinueGame" onclick="resumeGameAfterQuiz()" class="hidden py-3 px-8 bg-emerald-600 hover:bg-emerald-500 text-white font-game font-bold text-lg rounded-xl shadow-lg transition-all">
+                    Lanjutkan Bermain <i class="fa-solid fa-rotate-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER MODAL -->
+    <div id="gameOverModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md hidden">
+        <div class="max-w-md w-full bg-sawah-900 border-2 border-red-500/50 rounded-3xl p-6 md:p-8 shadow-2xl text-center relative my-auto">
+            <div class="w-20 h-20 bg-red-500/20 border-2 border-red-500 text-red-500 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">
+                <i class="fa-solid fa-skull-crossbones"></i>
+            </div>
+            
+            <h2 class="text-3xl font-extrabold font-game text-red-400 mb-1">GAME OVER</h2>
+            <p class="text-xs text-sawah-300 mb-6">Ular sawah kamu telah gugur dalam menjaga ekosistem.</p>
+
+            <div class="bg-sawah-800/80 rounded-2xl p-4 border border-sawah-600 mb-6 space-y-3">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-sawah-300">Pemain:</span>
+                    <span id="goPlayerName" class="font-bold text-white">Nama</span>
+                </div>
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-sawah-300">Skor Akhir:</span>
+                    <span id="goFinalScore" class="font-extrabold text-2xl text-yellow-300">0</span>
+                </div>
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-sawah-300">Tikus Dimakan:</span>
+                    <span id="goEatenCount" class="font-bold text-emerald-300">0 Ekor</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="restartGame()" class="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-game font-bold rounded-xl shadow transition-all">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Main Lagi
+                </button>
+                <button onclick="returnToMenu()" class="py-3 px-4 bg-sawah-700 hover:bg-sawah-600 text-sawah-200 font-game font-bold rounded-xl shadow transition-all">
+                    <i class="fa-solid fa-house mr-1"></i> Menu Utama
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEADERBOARD & EXPORT MODAL -->
+    <div id="leaderboardModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden">
+        <div class="max-w-2xl w-full bg-sawah-900 border-2 border-sawah-500/60 rounded-3xl p-6 md:p-8 shadow-2xl relative text-left my-auto max-h-[90vh] flex flex-col">
+            
+            <!-- Header -->
+            <div class="flex items-center justify-between pb-4 border-b border-sawah-700 mb-4">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-trophy text-3xl text-yellow-400"></i>
+                    <div>
+                        <h3 class="text-2xl font-bold font-game text-white">Papan Nilai Siswa</h3>
+                        <p class="text-xs text-sawah-300">Rekapitulasi skor permainan Ular Sawah</p>
+                    </div>
+                </div>
+                <button onclick="closeLeaderboard()" class="w-9 h-9 bg-sawah-800 hover:bg-sawah-700 text-sawah-300 rounded-full flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Leaderboard Table -->
+            <div class="flex-1 overflow-y-auto pr-1 mb-4">
+                <table class="w-full text-left text-xs md:text-sm">
+                    <thead class="bg-sawah-800 text-sawah-300 uppercase font-bold sticky top-0">
+                        <tr>
+                            <th class="p-3 rounded-l-xl">No</th>
+                            <th class="p-3">Nama Siswa</th>
+                            <th class="p-3">Skor</th>
+                            <th class="p-3">Tikus</th>
+                            <th class="p-3 rounded-r-xl">Tanggal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody" class="divide-y divide-sawah-800/60 font-semibold text-sawah-100">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer Buttons -->
+            <div class="pt-4 border-t border-sawah-700 flex flex-wrap justify-between items-center gap-3">
+                <button onclick="promptExportToken()" class="py-2.5 px-5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-bold text-sm rounded-xl shadow flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel text-yellow-300"></i> Unduh GSheet / CSV
+                </button>
+                <button onclick="closeLeaderboard()" class="py-2.5 px-5 bg-sawah-700 hover:bg-sawah-600 text-sawah-200 font-bold text-sm rounded-xl">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOKEN PROMPT MODAL FOR CSV EXPORT -->
+    <div id="tokenModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md hidden">
+        <div class="max-w-sm w-full bg-sawah-900 border-2 border-yellow-500/60 rounded-3xl p-6 shadow-2xl text-center relative my-auto">
+            <div class="w-14 h-14 bg-yellow-500/20 text-yellow-400 rounded-2xl border border-yellow-500/40 flex items-center justify-center text-2xl mx-auto mb-3">
+                <i class="fa-solid fa-key"></i>
+            </div>
+            <h4 class="text-xl font-bold font-game text-white mb-1">Verifikasi Token Guru</h4>
+            <p class="text-xs text-sawah-300 mb-4">Masukkan token otorisasi untuk mengunduh papan nilai.</p>
+
+            <input type="password" id="inputToken" placeholder="Token Guru (misal: 1234)" 
+                   class="w-full px-4 py-3 bg-sawah-950 border border-sawah-600 rounded-xl text-center text-lg text-white font-mono placeholder-sawah-500 focus:outline-none focus:border-yellow-400 mb-4">
+
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="verifyTokenAndExport()" class="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow">
+                    Konfirmasi
+                </button>
+                <button onclick="closeTokenModal()" class="py-2.5 px-4 bg-sawah-800 hover:bg-sawah-700 text-sawah-300 font-bold text-sm rounded-xl">
+                    Batal
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CUSTOM TOAST MESSAGE -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-sawah-950/90 border border-sawah-400 text-sawah-100 rounded-full text-xs md:text-sm font-semibold shadow-2xl hidden flex items-center gap-2 pointer-events-none transition-all duration-300">
+        <i id="toastIcon" class="fa-solid fa-circle-info text-yellow-400"></i>
+        <span id="toastMsg">Pesan Notifikasi</span>
+    </div>
+
+    <script>
+        // Quiz Data Bank (Biological Pest Control / Pengendalian Hama Biologi di Ekosistem Sawah)
+        const QUIZ_BANK = [
+            {
+                q: "Ular sawah merupakan predator alami yang sangat efektif bagi ekosistem pertanian. Mengapa keberadaannya harus dilindungi oleh petani?",
+                options: [
+                    "A. Ular sawah memakan padi secara langsung untuk nutrisinya",
+                    "B. Ular sawah mengendalikan populasi tikus secara alami tanpa mencemari lingkungan",
+                    "C. Ular sawah dapat menghasilkan pupuk organik berkualitas tinggi",
+                    "D. Ular sawah mengusir burung emprit yang memakan bulir padi",
+                    "E. Ular sawah menggemburkan tanah persawahan secara terus-menerus"
+                ],
+                correct: 1,
+                explanation: "Ular sawah bertindak sebagai musuh alami (predator) tikus sawah. Pengendalian secara biologi ini menjaga populasi tikus tetap terkendali tanpa racun kimia."
+            },
+            {
+                q: "Selain ular sawah, hewan malam manakah yang merupakan pemangsa tikus paling efektif dan sering dibuatkan rumah buatan (pagupon) oleh petani?",
+                options: [
+                    "A. Burung Elang Jawa",
+                    "B. Kelelawar Pemakan Buah",
+                    "C. Burung Hantu (Tyto alba)",
+                    "D. Burung Gagak Hitam",
+                    "E. Burung Kutilang"
+                ],
+                correct: 2,
+                explanation: "Burung Hantu (Tyto alba) sanggup memangsa 3-5 ekor tikus per malam, menjadikannya agen pengendali biologi unggulan di persawahan."
+            },
+            {
+                q: "Apa dampak buruk jangka panjang dari penggunaan racun tikus (umpan beracun/pestisida) secara berlebihan di persawahan?",
+                options: [
+                    "A. Tanah menjadi semakin subur dan kaya zat hara",
+                    "B. Predator alami seperti ular dan musang mati akibat keracunan sekunder (secara tidak langsung)",
+                    "C. Tikus sawah akan langsung berubah menjadi herbivora murni",
+                    "D. Tanaman padi tumbuh dua kali lebih cepat",
+                    "E. Air sawah menjadi jernih dan bebas kuman"
+                ],
+                correct: 1,
+                explanation: "Keracunan sekunder terjadi saat pemangsa (ular/musang/burung hantu) memakan tikus yang telah terkontaminasi racun, yang akhirnya memusnahkan musuh alami."
+            },
+            {
+                q: "Jika populasi ular sawah di suatu daerah punah karena diburu secara liar, dampak apa yang paling mungkin terjadi pada rantai makanan sawah?",
+                options: [
+                    "A. Hasil panen padi melimpah ruah",
+                    "B. Populasi musang bertambah secara mendadak",
+                    "C. Ledakan populasi tikus sawah yang mengakibatkan gagal panen",
+                    "D. Tanaman padi tidak lagi membutuhkan air",
+                    "E. Populasi serangga penggerek batang langsung hilang"
+                ],
+                correct: 2,
+                explanation: "Hilangnya predator utama seperti ular sawah menghilangkan kontrol populasi tikus, memicu ledakan hama (outbreak) dan gagal panen."
+            },
+            {
+                q: "Dalam konsep Pengendalian Hama Terpadu (PHT), apa yang dimaksud dengan 'Pengendalian Biologi'?",
+                options: [
+                    "A. Pemanfaatan bahan kimia sintesis dosis tinggi",
+                    "B. Pembakaran lahan sawah secara massal setelah panen",
+                    "C. Pemanfaatan organisme hidup seperti predator, parasitoid, dan patogen untuk menekan populasi hama",
+                    "D. Penggunaan plastik mulsa di sepanjang pematang sawah",
+                    "E. Pengairan air garam pada media tanam padi"
+                ],
+                correct: 2,
+                explanation: "Pengendalian biologi memanfaatkan hubungan pemangsa-mangsa alami untuk menjaga kestabilan populasi hama di bawah ambang kerugian ekonomi."
+            },
+            {
+                q: "Musang sawah kadang dianggap mengganggu, tetapi dalam ekosistem alami musang juga berperan sebagai...",
+                options: [
+                    "A. Hama utama pemakan daun padi",
+                    "B. Predator sekunder pemangsa tikus dan mamalia kecil",
+                    "C. Pengurai utama zat organik kayu",
+                    "D. Penyerbuk bunga padi di siang hari",
+                    "E. Inang dari jamur kelembabam tanah"
+                ],
+                correct: 1,
+                explanation: "Musang membantu menyeimbangkan rantai makanan sebagai pemangsa omnivora/karnivora mamalia kecil seperti tikus."
+            },
+            {
+                q: "Metode *System Trap Barrier System* (TBS) untuk mengendalikan tikus akan lebih optimal jika dipadukan dengan...",
+                options: [
+                    "A. Penyemprotan deterjen ke dalam tanah",
+                    "B. Pelepasan predator alami seperti ular tidak berbisa dan pengawasan Tyto alba",
+                    "C. Penebangan seluruh pohon di sekitar persawahan",
+                    "D. Perburuan katak secara besar-besaran",
+                    "E. Penanaman padi tanpa henti sepanjang tahun"
+                ],
+                correct: 1,
+                explanation: "Integrasi TBS dengan konservasi predator alami (ular & burung hantu) menciptakan pertahanan ekologis yang berkelanjutan."
+            }
+        ];
+    </script>
+
+    <script>
+        // ==========================================
+        // GLOBAL VARIABLES & SETUP
+        // ==========================================
+        let canvas, ctx;
+        let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let gameState = 'MENU'; // 'MENU', 'PLAYING', 'PAUSED', 'QUIZ', 'GAMEOVER'
+        let score = 0;
+        let eatenRatsCount = 0;
+        let revivesLeft = 3;
+        let playerName = '';
+        let animationFrameId = null;
+        let currentQuizIndex = 0;
+        let selectedOptionIndex = null;
+
+        function resizeCanvas() {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                if (typeof env !== 'undefined' && env) {
+                    env.initPaddies();
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Track Mouse Movement
+            window.addEventListener('mousemove', (e) => {
+                mouse.x = e.clientX;
+                mouse.y = e.clientY;
+            });
+
+            // Track Touch Movement for Mobile / Touchscreens
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 0) {
+                    mouse.x = e.touches[0].clientX;
+                    mouse.y = e.touches[0].clientY;
+                }
+            }, { passive: true });
+        });
+
+        // ==========================================
+        // ENTITY CLASSES (Snake, Rat, Musang, Particle)
+        // ==========================================
+
+        // PLAYER SNAKE CLASS
+        class Snake {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.tier = 1; // Tier 1: Small, Tier 2: Medium, Tier 3: Large, Tier 4: Python
+                this.growth = 0; // Growth points in current tier
+                this.requiredGrowth = 100;
+                this.baseRadius = 14;
+                this.radius = this.baseRadius;
+                this.speed = 6.5; // Increased speed for faster & more responsive movement
+                this.segments = [];
+                this.numSegments = 16;
+                this.segmentSpacing = 10;
+                this.angle = 0;
+                this.invincibleTimer = 0; // Invincibility frame after revive
+                this.isHiding = false; // Stealth status when near paddy stalks
+
+                // Initialize tail segments
+                for (let i = 0; i < this.numSegments; i++) {
+                    this.segments.push({ x: this.x - i * this.segmentSpacing, y: this.y });
+                }
+            }
+
+            update(paddies = []) {
+                if (this.invincibleTimer > 0) {
+                    this.invincibleTimer--;
+                }
+
+                // Check if snake head is hiding under cover of paddy plants
+                this.isHiding = false;
+                if (paddies && paddies.length > 0) {
+                    for (let p of paddies) {
+                        const pdist = Math.hypot(this.x - p.x, this.y - p.y);
+                        if (pdist < 42) {
+                            this.isHiding = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Move head towards mouse with smoother and faster response
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 5) {
+                    this.angle = Math.atan2(dy, dx);
+                    const moveSpeed = Math.min(dist * 0.15, this.speed); // Increased turn/follow rate
+                    this.x += Math.cos(this.angle) * moveSpeed;
+                    this.y += Math.sin(this.angle) * moveSpeed;
+                }
+
+                // Update Body Segments (Inverse Kinematics / Follow Leader)
+                this.segments[0] = { x: this.x, y: this.y };
+                for (let i = 1; i < this.segments.length; i++) {
+                    const segPrev = this.segments[i - 1];
+                    const segCurr = this.segments[i];
+                    const sdx = segPrev.x - segCurr.x;
+                    const sdy = segPrev.y - segCurr.y;
+                    const sdist = Math.hypot(sdx, sdy);
+                    const targetSpacing = this.segmentSpacing * (this.radius / this.baseRadius);
+
+                    if (sdist > 0) {
+                        segCurr.x = segPrev.x - (sdx / sdist) * targetSpacing;
+                        segCurr.y = segPrev.y - (sdy / sdist) * targetSpacing;
+                    }
+                }
+            }
+
+            addGrowth(amount) {
+                this.growth += amount;
+                score += amount * 10;
+                eatenRatsCount++;
+
+                // Check for Tier Level Up
+                if (this.growth >= this.requiredGrowth) {
+                    if (this.tier < 4) {
+                        this.tier++;
+                        this.growth = 0;
+                        this.requiredGrowth = Math.floor(this.requiredGrowth * 1.5);
+                        this.radius = this.baseRadius + (this.tier - 1) * 8;
+                        this.numSegments += 6;
+                        this.speed = Math.max(5.0, this.speed - 0.2); // Maintain agile speed across tiers
+
+                        // Extend segments
+                        const lastSeg = this.segments[this.segments.length - 1];
+                        for (let i = 0; i < 6; i++) {
+                            this.segments.push({ x: lastSeg.x, y: lastSeg.y });
+                        }
+
+                        sfx.playLevelUp();
+                        showToast(`SEAMAT! Ular Sawah bertumbuh ke Tier ${this.tier}!`, 'fa-arrow-up text-green-400');
+                    } else {
+                        this.growth = this.requiredGrowth; // Maxed out
+                    }
+                } else {
+                    sfx.playEat();
+                }
+
+                updateHud();
+            }
+
+            draw() {
+                // Draw hiding status indicator when inside paddy cover
+                if (this.isHiding) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.roundRect(this.x - 38, this.y - this.radius - 28, 76, 20, 8);
+                    ctx.fillStyle = 'rgba(20, 83, 45, 0.9)';
+                    ctx.strokeStyle = '#86efac';
+                    ctx.lineWidth = 1.5;
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#86efac';
+                    ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('🍃 Bersembunyi', this.x, this.y - this.radius - 14);
+                    ctx.restore();
+                }
+
+                // Draw invincibility aura if active
+                if (this.invincibleTimer > 0 && Math.floor(Date.now() / 100) % 2 === 0) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius + 10, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(234, 179, 8, 0.3)';
+                    ctx.strokeStyle = '#eab308';
+                    ctx.lineWidth = 2;
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // Draw Snake Body Segments from Tail to Head
+                for (let i = this.segments.length - 1; i >= 0; i--) {
+                    const seg = this.segments[i];
+                    const ratio = 1 - (i / this.segments.length);
+                    const segRadius = Math.max(3, this.radius * (0.4 + 0.6 * ratio));
+
+                    ctx.save();
+                    ctx.translate(seg.x, seg.y);
+
+                    if (i === 0) {
+                        // SNAKE HEAD
+                        ctx.rotate(this.angle);
+
+                        // Head base gradient
+                        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, this.radius);
+                        grad.addColorStop(0, '#86efac');
+                        grad.addColorStop(1, '#15803d');
+
+                        ctx.beginPath();
+                        ctx.ellipse(0, 0, this.radius * 1.3, this.radius, 0, 0, Math.PI * 2);
+                        ctx.fillStyle = grad;
+                        ctx.fill();
+                        ctx.strokeStyle = '#14532d';
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        // Eyes
+                        ctx.fillStyle = '#facc15';
+                        ctx.beginPath();
+                        ctx.arc(this.radius * 0.4, -this.radius * 0.45, Math.max(2, segRadius * 0.25), 0, Math.PI * 2);
+                        ctx.arc(this.radius * 0.4, this.radius * 0.45, Math.max(2, segRadius * 0.25), 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#000';
+                        ctx.beginPath();
+                        ctx.arc(this.radius * 0.45, -this.radius * 0.45, Math.max(1, segRadius * 0.12), 0, Math.PI * 2);
+                        ctx.arc(this.radius * 0.45, this.radius * 0.45, Math.max(1, segRadius * 0.12), 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Flicking Tongue Animation
+                        if (Math.sin(Date.now() * 0.01) > 0.5) {
+                            ctx.strokeStyle = '#ef4444';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(this.radius * 1.2, 0);
+                            ctx.lineTo(this.radius * 1.8, 0);
+                            ctx.lineTo(this.radius * 2.1, -4);
+                            ctx.moveTo(this.radius * 1.8, 0);
+                            ctx.lineTo(this.radius * 2.1, 4);
+                            ctx.stroke();
+                        }
+
+                    } else {
+                        // BODY SEGMENTS with Pattern
+                        ctx.beginPath();
+                        ctx.arc(0, 0, segRadius, 0, Math.PI * 2);
+                        ctx.fillStyle = (i % 2 === 0) ? '#166534' : '#22c55e';
+                        ctx.fill();
+                        ctx.strokeStyle = '#052e16';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        // Paddy snake spot pattern
+                        if (i % 3 === 0) {
+                            ctx.fillStyle = '#ca8a04';
+                            ctx.beginPath();
+                            ctx.arc(0, 0, segRadius * 0.4, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        // RAT (TIKUS) CLASS
+        class Rat {
+            constructor(tier = 1) {
+                this.tier = tier; // 1: Small, 2: Medium, 3: Large, 4: Giant
+                this.radius = 8 + tier * 6;
+                this.speed = 3.5 - tier * 0.4;
+                this.growthValue = tier * 15;
+                
+                // Spawn off-screen
+                const side = Math.floor(Math.random() * 4);
+                if (side === 0) { this.x = -30; this.y = Math.random() * canvas.height; }
+                else if (side === 1) { this.x = canvas.width + 30; this.y = Math.random() * canvas.height; }
+                else if (side === 2) { this.x = Math.random() * canvas.width; this.y = -30; }
+                else { this.x = Math.random() * canvas.width; this.y = canvas.height + 30; }
+
+                this.angle = Math.random() * Math.PI * 2;
+                this.wiggle = Math.random() * 100;
+                this.targetX = Math.random() * canvas.width;
+                this.targetY = Math.random() * canvas.height;
+                this.changeDirTimer = 0;
+
+                // Paddy Eating State
+                this.isEating = false;
+                this.eatingTimer = 0;
+                this.eatDuration = 120 + Math.floor(Math.random() * 80); // ~2 to 3 seconds of standing still while eating
+                this.eatCooldown = 100 + Math.floor(Math.random() * 150); // Cooldown between eating sessions
+            }
+
+            update(playerSnake, paddies = []) {
+                this.wiggle += 0.15;
+
+                // If currently eating paddy, stay still and munch!
+                if (this.isEating) {
+                    this.eatingTimer++;
+                    // Generate small rice crumb particles
+                    if (Math.random() < 0.25) {
+                        particles.push(new Particle(this.x, this.y - 10, '#fef08a'));
+                    }
+                    if (this.eatingTimer >= this.eatDuration) {
+                        this.isEating = false;
+                        this.eatingTimer = 0;
+                        this.eatCooldown = 150 + Math.floor(Math.random() * 200);
+                        this.targetX = Math.random() * canvas.width;
+                        this.targetY = Math.random() * canvas.height;
+                    }
+                    return; // Stationary while eating paddy
+                }
+
+                this.changeDirTimer++;
+                if (this.eatCooldown > 0) this.eatCooldown--;
+
+                // Fleeing AI if player snake is bigger and very close
+                const dx = playerSnake.x - this.x;
+                const dy = playerSnake.y - this.y;
+                const distToSnake = Math.hypot(dx, dy);
+
+                if (distToSnake < 200 && playerSnake.tier >= this.tier) {
+                    // Run away from snake
+                    this.angle = Math.atan2(-dy, -dx);
+                } else {
+                    // Check if ready to eat nearby paddy stalk
+                    if (this.eatCooldown <= 0 && paddies.length > 0) {
+                        // Find closest paddy stalk
+                        let closestPaddy = null;
+                        let minDist = 180;
+                        for (let p of paddies) {
+                            const pdist = Math.hypot(p.x - this.x, p.y - this.y);
+                            if (pdist < minDist) {
+                                minDist = pdist;
+                                closestPaddy = p;
+                            }
+                        }
+
+                        if (closestPaddy) {
+                            this.targetX = closestPaddy.x;
+                            this.targetY = closestPaddy.y;
+                            this.angle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+
+                            if (minDist < 18) {
+                                this.isEating = true;
+                                this.eatingTimer = 0;
+                            }
+                        }
+                    }
+
+                    if (!this.isEating && (this.changeDirTimer > 120 || Math.hypot(this.targetX - this.x, this.targetY - this.y) < 30)) {
+                        this.targetX = Math.random() * canvas.width;
+                        this.targetY = Math.random() * canvas.height;
+                        this.angle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+                        this.changeDirTimer = 0;
+                    }
+                }
+
+                // Move forward
+                const effectiveAngle = this.angle + Math.sin(this.wiggle) * 0.25;
+                this.x += Math.cos(effectiveAngle) * this.speed;
+                this.y += Math.sin(effectiveAngle) * this.speed;
+            }
+
+            isOutOfBounds() {
+                return (this.x < -100 || this.x > canvas.width + 100 || this.y < -100 || this.y > canvas.height + 100);
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Draw "Makan Padi" Indicator / Status Bubble when eating
+                if (this.isEating) {
+                    ctx.save();
+                    const bob = Math.sin(Date.now() * 0.01) * 3;
+                    ctx.fillStyle = 'rgba(20, 83, 45, 0.85)';
+                    ctx.strokeStyle = '#facc15';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.roundRect(-28, -this.radius - 28 + bob, 56, 18, 8);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#fef08a';
+                    ctx.font = 'bold 10px "Plus Jakarta Sans", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('🌾 Makan Padi', 0, -this.radius - 16 + bob);
+                    ctx.restore();
+                }
+
+                ctx.rotate(this.angle);
+
+                // Rat Color based on Tier
+                const colors = ['#a8a29e', '#78716c', '#57534e', '#44403c'];
+                const bodyColor = colors[this.tier - 1] || '#78716c';
+
+                // Wiggling Tail
+                ctx.strokeStyle = '#f43f5e';
+                ctx.lineWidth = Math.max(1.5, this.radius * 0.18);
+                ctx.beginPath();
+                ctx.moveTo(-this.radius * 0.9, 0);
+                const tailWiggle = this.isEating ? 0 : Math.sin(this.wiggle * 2) * (this.radius * 0.5);
+                ctx.quadraticCurveTo(-this.radius * 1.8, tailWiggle, -this.radius * 2.5, tailWiggle * 1.2);
+                ctx.stroke();
+
+                // Rat Body
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.radius * 1.2, this.radius * 0.8, 0, 0, Math.PI * 2);
+                ctx.fillStyle = bodyColor;
+                ctx.fill();
+                ctx.strokeStyle = '#292524';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Ears
+                ctx.fillStyle = '#fb7185';
+                ctx.beginPath();
+                ctx.arc(-this.radius * 0.2, -this.radius * 0.7, this.radius * 0.35, 0, Math.PI * 2);
+                ctx.arc(-this.radius * 0.2, this.radius * 0.7, this.radius * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eyes & Snout
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(this.radius * 0.6, -this.radius * 0.3, Math.max(1.5, this.radius * 0.12), 0, Math.PI * 2);
+                ctx.arc(this.radius * 0.6, this.radius * 0.3, Math.max(1.5, this.radius * 0.12), 0, Math.PI * 2);
+                ctx.fill();
+
+                // Pink Nose
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(this.radius * 1.1, 0, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // MUSANG (CIVET PREDATOR) CLASS
+        class Musang {
+            constructor() {
+                this.radius = 36;
+                this.speed = 3.2 + Math.random() * 1.0; // Variable speed for natural pacing
+                this.state = 'WANDERING'; // 'CHASING' or 'WANDERING'
+
+                // Spawn on edges
+                if (Math.random() > 0.5) {
+                    this.x = Math.random() > 0.5 ? -60 : canvas.width + 60;
+                    this.y = Math.random() * canvas.height;
+                } else {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() > 0.5 ? -60 : canvas.height + 60;
+                }
+
+                // Initial trajectory across screen
+                this.targetX = canvas.width - this.x + (Math.random() - 0.5) * 200;
+                this.targetY = canvas.height - this.y + (Math.random() - 0.5) * 200;
+                this.angle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+                this.animTimer = Math.random() * Math.PI;
+            }
+
+            update(playerSnake) {
+                this.animTimer += 0.1;
+
+                // Check if player snake is visible and targetable (not hiding & not invincible)
+                const isTargetable = playerSnake && !playerSnake.isHiding && playerSnake.invincibleTimer <= 0;
+
+                if (isTargetable) {
+                    this.state = 'CHASING';
+                    // Calculate target angle to steer towards snake
+                    const targetAngle = Math.atan2(playerSnake.y - this.y, playerSnake.x - this.x);
+
+                    // Smooth rotation towards snake position
+                    let diff = targetAngle - this.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+
+                    this.angle += diff * 0.055; // Steering speed towards player
+                } else {
+                    this.state = 'WANDERING';
+                    // Continue along current path when target is lost or hidden in paddies
+                }
+
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+            }
+
+            isOutOfBounds() {
+                return (this.x < -150 || this.x > canvas.width + 150 || this.y < -150 || this.y > canvas.height + 150);
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Alert Symbol above Musang head (❗ Mengejar when chasing, ❓ Mencari... when wandering/lost target)
+                ctx.save();
+                if (this.state === 'CHASING') {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = 'bold 13px "Fredoka", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('❗ Mengejar Ular', 0, -this.radius - 12);
+                } else {
+                    ctx.fillStyle = '#facc15';
+                    ctx.font = 'bold 12px "Fredoka", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('❓ Mencari...', 0, -this.radius - 12);
+                }
+                ctx.restore();
+
+                ctx.rotate(this.angle);
+
+                // Bushy Tail
+                ctx.fillStyle = '#7c2d12';
+                ctx.beginPath();
+                ctx.ellipse(-this.radius * 1.5, Math.sin(this.animTimer) * 5, this.radius * 1.1, this.radius * 0.45, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Musang Sleek Body
+                ctx.fillStyle = '#451a03';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.radius * 1.3, this.radius * 0.7, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#290e02';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Mask/Face markings
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.ellipse(this.radius * 0.5, 0, this.radius * 0.6, this.radius * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Ears
+                ctx.fillStyle = '#290e02';
+                ctx.beginPath();
+                ctx.moveTo(0, -this.radius * 0.6);
+                ctx.lineTo(this.radius * 0.3, -this.radius * 1.1);
+                ctx.lineTo(this.radius * 0.6, -this.radius * 0.5);
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(0, this.radius * 0.6);
+                ctx.lineTo(this.radius * 0.3, this.radius * 1.1);
+                ctx.lineTo(this.radius * 0.6, this.radius * 0.5);
+                ctx.fill();
+
+                // Glowing Predator Eyes
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(this.radius * 0.8, -this.radius * 0.3, 4, 0, Math.PI * 2);
+                ctx.arc(this.radius * 0.8, this.radius * 0.3, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Sharp Teeth
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(this.radius * 1.2, -this.radius * 0.15);
+                ctx.lineTo(this.radius * 1.4, 0);
+                ctx.lineTo(this.radius * 1.2, this.radius * 0.15);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // FLOATING PARTICLE EFFECT
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = Math.random() * 4 + 2;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = (Math.random() - 0.5) * 6;
+                this.alpha = 1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.03;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Floating Rice Field Paddy Stalks / Background Ambiance
+        class Environment {
+            constructor() {
+                this.paddies = [];
+                this.initPaddies();
+            }
+
+            initPaddies() {
+                this.paddies = [];
+                const count = Math.floor((window.innerWidth * window.innerHeight) / 35000) + 18;
+                for (let i = 0; i < count; i++) {
+                    this.paddies.push({
+                        x: Math.random() * (window.innerWidth - 60) + 30,
+                        y: Math.random() * (window.innerHeight - 60) + 30,
+                        height: 38 + Math.random() * 22,
+                        sway: Math.random() * Math.PI * 2,
+                        leaves: 3 + Math.floor(Math.random() * 3),
+                        panicles: 2 + Math.floor(Math.random() * 2)
+                    });
+                }
+            }
+
+            draw() {
+                this.paddies.forEach(p => {
+                    p.sway += 0.02;
+                    const swayX = Math.sin(p.sway) * 10;
+
+                    ctx.save();
+                    ctx.translate(p.x, p.y);
+
+                    // 1. Draw Lush Green Leaves (Daun Padi)
+                    ctx.fillStyle = '#3a7534';
+                    ctx.strokeStyle = '#234f1f';
+                    ctx.lineWidth = 1.5;
+
+                    for (let l = 0; l < p.leaves; l++) {
+                        const side = l % 2 === 0 ? 1 : -1;
+                        const leafAngle = (side * (0.4 + l * 0.2)) + (swayX * 0.01);
+                        const leafLen = p.height * (0.6 + l * 0.15);
+
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.quadraticCurveTo(
+                            side * (leafLen * 0.5), -leafLen * 0.5,
+                            side * (leafLen * 0.8) + swayX * 0.5, -leafLen * (0.4 + Math.sin(p.sway) * 0.1)
+                        );
+                        ctx.quadraticCurveTo(
+                            side * (leafLen * 0.3), -leafLen * 0.3,
+                            0, 0
+                        );
+                        ctx.fillStyle = l % 2 === 0 ? '#4c9245' : '#5ba353';
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+
+                    // 2. Draw Main Stalk (Batang Padi Utama)
+                    ctx.strokeStyle = '#305d2b';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(swayX * 0.4, -p.height * 0.6, swayX, -p.height);
+                    ctx.stroke();
+
+                    // 3. Draw Golden Drooping Panicles with Grains (Tangkai & Bulir Padi Menguning)
+                    for (let pan = 0; pan < p.panicles; pan++) {
+                        const pSide = pan % 2 === 0 ? 1 : -1;
+                        const panStartX = swayX;
+                        const panStartY = -p.height;
+                        const droopX = panStartX + pSide * (12 + pan * 6) + swayX * 0.3;
+                        const droopY = panStartY + (18 + pan * 5);
+
+                        // Stem of grain cluster
+                        ctx.strokeStyle = '#d4af37';
+                        ctx.lineWidth = 1.8;
+                        ctx.beginPath();
+                        ctx.moveTo(panStartX, panStartY);
+                        ctx.quadraticCurveTo(panStartX + pSide * 8, panStartY + 5, droopX, droopY);
+                        ctx.stroke();
+
+                        // Individual Golden Rice Grains (Bulir Padi Clustered)
+                        const grainCount = 5 + pan * 2;
+                        for (let g = 0; g < grainCount; g++) {
+                            const t = g / (grainCount - 1);
+                            // Interpolate position along the curve
+                            const gx = (1 - t) * (1 - t) * panStartX + 2 * (1 - t) * t * (panStartX + pSide * 8) + t * t * droopX;
+                            const gy = (1 - t) * (1 - t) * panStartY + 2 * (1 - t) * t * (panStartY + 5) + t * t * droopY;
+
+                            ctx.fillStyle = g % 2 === 0 ? '#facc15' : '#eab308';
+                            ctx.beginPath();
+                            ctx.ellipse(gx + (g % 2 === 0 ? 2 : -2), gy, 3.5, 2, Math.PI / 4 * pSide, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.strokeStyle = '#ca8a04';
+                            ctx.lineWidth = 0.5;
+                            ctx.stroke();
+                        }
+                    }
+
+                    ctx.restore();
+                });
+            }
+        }
+
+        // ==========================================
+        // GAME INSTANCES & SPAWNING MANAGEMENT
+        // ==========================================
+        let playerSnake = null;
+        let rats = [];
+        let musangs = [];
+        let particles = [];
+        let env = new Environment();
+        let spawnTimer = 0;
+        let musangTimer = 0;
+
+        function initGame() {
+            playerSnake = new Snake();
+            rats = [];
+            musangs = [];
+            particles = [];
+            score = 0;
+            eatenRatsCount = 0;
+            revivesLeft = 3;
+            updateHud();
+
+            // Initial Rats
+            for (let i = 0; i < 12; i++) {
+                spawnRat();
+            }
+        }
+
+        function spawnRat() {
+            // Determine Rat Tier based on Player Snake Tier
+            let tier = 1;
+            const rand = Math.random();
+            if (playerSnake.tier === 1) {
+                tier = rand > 0.85 ? 2 : 1;
+            } else if (playerSnake.tier === 2) {
+                tier = rand > 0.6 ? 2 : (rand > 0.9 ? 3 : 1);
+            } else if (playerSnake.tier === 3) {
+                tier = rand > 0.5 ? 3 : (rand > 0.85 ? 4 : 2);
+            } else {
+                tier = rand > 0.4 ? 4 : (rand > 0.7 ? 3 : 2);
+            }
+            rats.push(new Rat(tier));
+        }
+
+        function spawnMusang() {
+            // Spawn waves of 2 to 3 musangs simultaneously depending on Tier
+            const waveSize = playerSnake.tier >= 3 ? (Math.random() < 0.6 ? 3 : 2) : 2;
+            const maxMusangs = 5; // Allow up to 5 musangs on field at once for high tension
+
+            let spawnedCount = 0;
+            for (let i = 0; i < waveSize; i++) {
+                if (musangs.length < maxMusangs) {
+                    musangs.push(new Musang());
+                    spawnedCount++;
+                }
+            }
+
+            if (spawnedCount > 0) {
+                sfx.playBitten();
+                showToast(`AWAS! ${spawnedCount} Ekor Musang berburu di persawahan!`, "fa-triangle-exclamation text-red-400");
+            }
+        }
+
+        function createSplash(x, y, color = '#22c55e', count = 12) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // ==========================================
+        // MAIN GAME ENGINE LOOP
+        // ==========================================
+        function ensureGameLoop() {
+            if (!animationFrameId) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                // Clear Canvas background
+                ctx.fillStyle = '#22421f';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Draw Environment
+                env.draw();
+
+                // Spawning Logic
+                spawnTimer++;
+                if (spawnTimer > 45 && rats.length < 18) {
+                    spawnRat();
+                    spawnTimer = 0;
+                }
+
+                musangTimer++;
+                if (musangTimer > 400) { // Musang wave spawns more frequently (~6.5 seconds)
+                    spawnMusang();
+                    musangTimer = 0;
+                }
+
+                // Update & Draw Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw();
+                    if (particles[i].alpha <= 0) particles.splice(i, 1);
+                }
+
+                // Update & Draw Rats (Pass environment paddies for eating mechanics)
+                for (let i = rats.length - 1; i >= 0; i--) {
+                    const r = rats[i];
+                    r.update(playerSnake, env.paddies);
+                    r.draw();
+
+                    // Check Eating Collision with Player Snake
+                    const distToSnakeHead = Math.hypot(playerSnake.x - r.x, playerSnake.y - r.y);
+                    if (distToSnakeHead < playerSnake.radius + r.radius) {
+                        if (playerSnake.tier >= r.tier) {
+                            // Snake eats Rat!
+                            createSplash(r.x, r.y, '#f43f5e', 14);
+                            playerSnake.addGrowth(r.growthValue);
+                            rats.splice(i, 1);
+                        } else {
+                            // Rat too big! Bounce back warning
+                            showToast(`Tikus ini terlalu besar! Naikkan Tier ular dahulu!`, 'fa-triangle-exclamation text-yellow-400');
+                        }
+                    } else if (r.isOutOfBounds()) {
+                        rats.splice(i, 1);
+                    }
+                }
+
+                // Update & Draw Musang (Predators)
+                for (let i = musangs.length - 1; i >= 0; i--) {
+                    const m = musangs[i];
+                    m.update(playerSnake);
+                    m.draw();
+
+                    // Check Collision with Player Snake
+                    const distToSnake = Math.hypot(playerSnake.x - m.x, playerSnake.y - m.y);
+                    if (distToSnake < playerSnake.radius + m.radius && playerSnake.invincibleTimer <= 0) {
+                        // Musang eats Player Snake! Trigger Quiz Modal
+                        sfx.playBitten();
+                        createSplash(playerSnake.x, playerSnake.y, '#ef4444', 25);
+                        triggerQuizModal();
+                        break;
+                    }
+
+                    if (m.isOutOfBounds()) {
+                        musangs.splice(i, 1);
+                    }
+                }
+
+                // Update & Draw Player Snake if still playing
+                if (gameState === 'PLAYING' && playerSnake) {
+                    playerSnake.update(env.paddies);
+                    playerSnake.draw();
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // HUD & UI UPDATES
+        // ==========================================
+        function updateHud() {
+            document.getElementById('hudPlayerName').innerText = playerName;
+            document.getElementById('scoreDisplay').innerText = score;
+            document.getElementById('hudTierBadge').innerText = `Tier ${playerSnake.tier}`;
+
+            const tierNames = ["Ular Cilik", "Ular Sawah Sedang", "Ular Pemangsa Besar", "Raja Ular Sawah"];
+            document.getElementById('growthLabel').innerText = tierNames[playerSnake.tier - 1];
+
+            const pct = Math.min(100, Math.floor((playerSnake.growth / playerSnake.requiredGrowth) * 100));
+            document.getElementById('growthBar').style.width = `${pct}%`;
+
+            // Hearts
+            const heartContainer = document.getElementById('heartContainer');
+            heartContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < revivesLeft) {
+                    heartContainer.innerHTML += `<i class="fa-solid fa-heart text-red-500"></i>`;
+                } else {
+                    heartContainer.innerHTML += `<i class="fa-regular fa-heart text-sawah-600"></i>`;
+                }
+            }
+        }
+
+        function showToast(msg, iconClass = "fa-circle-info text-yellow-400") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.innerText = msg;
+            toastIcon.className = `fa-solid ${iconClass}`;
+            toast.classList.remove('hidden');
+
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+
+        function toggleAudio() {
+            sfx.enabled = !sfx.enabled;
+            const btn = document.getElementById('btnAudioToggle');
+            btn.innerHTML = sfx.enabled ? `<i class="fa-solid fa-volume-high"></i>` : `<i class="fa-solid fa-volume-xmark text-red-400"></i>`;
+            showToast(sfx.enabled ? "Suara diaktifkan" : "Suara dibisukan");
+        }
+
+        // ==========================================
+        // QUIZ SYSTEM LOGIC
+        // ==========================================
+        function triggerQuizModal() {
+            gameState = 'QUIZ';
+            sfx.stopBGM();
+            document.getElementById('quizModal').classList.remove('hidden');
+            document.getElementById('quizReviveCount').innerText = `Kesempatan Bangkit: ${revivesLeft}/3`;
+
+            // Select random question
+            currentQuizIndex = Math.floor(Math.random() * QUIZ_BANK.length);
+            const qData = QUIZ_BANK[currentQuizIndex];
+
+            document.getElementById('quizQuestion').innerText = qData.q;
+            const optionsContainer = document.getElementById('quizOptions');
+            optionsContainer.innerHTML = '';
+            selectedOptionIndex = null;
+
+            document.getElementById('quizFeedback').classList.add('hidden');
+            document.getElementById('btnSubmitQuiz').classList.remove('hidden');
+            document.getElementById('btnContinueGame').classList.add('hidden');
+
+            qData.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left p-3.5 rounded-xl border-2 border-sawah-600 bg-sawah-800 hover:bg-sawah-700 text-white font-semibold text-sm md:text-base transition-all focus:outline-none flex items-center justify-between gap-2 shadow`;
+                btn.innerHTML = `<span class="text-white drop-shadow-sm">${opt}</span><i class="fa-regular fa-circle text-yellow-400 text-lg flex-shrink-0"></i>`;
+                btn.onclick = () => selectQuizOption(idx, btn);
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        function selectQuizOption(idx, btnElement) {
+            selectedOptionIndex = idx;
+            const buttons = document.getElementById('quizOptions').children;
+            for (let b of buttons) {
+                b.className = `w-full text-left p-3.5 rounded-xl border-2 border-sawah-600 bg-sawah-800 text-white font-semibold text-sm md:text-base transition-all focus:outline-none flex items-center justify-between gap-2 shadow`;
+                const icon = b.querySelector('i');
+                if (icon) icon.className = `fa-regular fa-circle text-yellow-400 text-lg flex-shrink-0`;
+            }
+            btnElement.className = `w-full text-left p-3.5 rounded-xl border-2 border-yellow-400 bg-yellow-500/30 text-yellow-200 font-bold text-sm md:text-base transition-all focus:outline-none flex items-center justify-between gap-2 shadow-lg`;
+            const selIcon = btnElement.querySelector('i');
+            if (selIcon) selIcon.className = `fa-solid fa-circle-dot text-yellow-400 text-lg flex-shrink-0`;
+        }
+
+        function checkQuizAnswer() {
+            if (selectedOptionIndex === null) {
+                showToast("Pilih salah satu jawaban terlebih dahulu!", "fa-circle-exclamation text-yellow-400");
+                return;
+            }
+
+            const qData = QUIZ_BANK[currentQuizIndex];
+            const feedbackBox = document.getElementById('quizFeedback');
+            feedbackBox.classList.remove('hidden');
+
+            if (selectedOptionIndex === qData.correct) {
+                // Correct Answer!
+                sfx.playQuizCorrect();
+                revivesLeft--;
+                feedbackBox.className = "p-4 rounded-xl text-sm mb-4 bg-emerald-900/80 border border-emerald-500 text-emerald-200 leading-relaxed";
+                feedbackBox.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 mr-2 text-lg"></i> <b>JAWABAN BENAR!</b><br>${qData.explanation}`;
+
+                document.getElementById('btnSubmitQuiz').classList.add('hidden');
+                document.getElementById('btnContinueGame').classList.remove('hidden');
+
+            } else {
+                // Incorrect Answer!
+                sfx.playQuizWrong();
+                feedbackBox.className = "p-4 rounded-xl text-sm mb-4 bg-red-900/80 border border-red-500 text-red-200 leading-relaxed";
+                feedbackBox.innerHTML = `<i class="fa-solid fa-circle-xmark text-red-400 mr-2 text-lg"></i> <b>JAWABAN KURANG TEPAT!</b><br>${qData.explanation}`;
+
+                document.getElementById('btnSubmitQuiz').classList.add('hidden');
+
+                // Delayed Game Over
+                setTimeout(() => {
+                    document.getElementById('quizModal').classList.add('hidden');
+                    endGame();
+                }, 3500);
+            }
+        }
+
+        function resumeGameAfterQuiz() {
+            document.getElementById('quizModal').classList.add('hidden');
+            if (revivesLeft >= 0) {
+                // Reposition player to safe area
+                playerSnake.x = canvas.width / 2;
+                playerSnake.y = canvas.height / 2;
+                playerSnake.invincibleTimer = 180; // 3 seconds invincibility frame
+                musangs = []; // Clear musangs temporarily
+                gameState = 'PLAYING';
+                updateHud();
+                sfx.startBGM();
+                showToast("Ular bangkit kembali dengan perlindungan sementara!", "fa-shield text-emerald-400");
+                ensureGameLoop();
+            } else {
+                endGame();
+            }
+        }
+
+        // ==========================================
+        // GAME FLOW MANAGEMENT (Start, Pause, End)
+        // ==========================================
+        function startGame() {
+            const nameInput = document.getElementById('playerName').value.trim();
+            if (!nameInput) {
+                showToast("Silakan masukkan nama murid terlebih dahulu!", "fa-user-pen text-yellow-400");
+                return;
+            }
+            playerName = nameInput;
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameHud').classList.remove('hidden');
+
+            sfx.init();
+            initGame();
+            gameState = 'PLAYING';
+            sfx.startBGM();
+            ensureGameLoop();
+        }
+
+        function pauseGame() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                sfx.stopBGM();
+                showToast("Permainan Diberhentikan Sementara", "fa-pause text-yellow-400");
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                sfx.startBGM();
+                showToast("Permainan Dilanjutkan", "fa-play text-emerald-400");
+                ensureGameLoop();
+            }
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            sfx.stopBGM();
+            saveScore(playerName, score, eatenRatsCount);
+
+            document.getElementById('goPlayerName').innerText = playerName;
+            document.getElementById('goFinalScore').innerText = score;
+            document.getElementById('goEatenCount').innerText = `${eatenRatsCount} Ekor`;
+
+            document.getElementById('gameOverModal').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            document.getElementById('gameOverModal').classList.add('hidden');
+            initGame();
+            gameState = 'PLAYING';
+            sfx.startBGM();
+            ensureGameLoop();
+        }
+
+        function returnToMenu() {
+            sfx.stopBGM();
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('gameHud').classList.add('hidden');
+            document.getElementById('startScreen').classList.remove('hidden');
+            gameState = 'MENU';
+        }
+        function toggleAudio() {
+            sfx.enabled = !sfx.enabled;
+            if (sfx.enabled) {
+                if (gameState === 'PLAYING') sfx.startBGM();
+            } else {
+                sfx.stopBGM();
+            }
+            const btn = document.getElementById('btnAudioToggle');
+            btn.innerHTML = sfx.enabled ? `<i class="fa-solid fa-volume-high"></i>` : `<i class="fa-solid fa-volume-xmark text-red-400"></i>`;
+            showToast(sfx.enabled ? "Suara & Musik diaktifkan" : "Suara & Musik dibisukan");
+        }
+
+        function saveScore(pName, pScore, pRats) {
+            const scores = getScores();
+            const dateStr = new Date().toLocaleDateString('id-ID', {
+                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+
+            scores.push({
+                name: pName,
+                score: pScore,
+                rats: pRats,
+                date: dateStr
+            });
+
+            // Sort descending by score
+            scores.sort((a, b) => b.score - a.score);
+            localStorage.setItem('ular_sawah_scores', JSON.stringify(scores.slice(0, 50))); // Keep top 50
+        }
+
+        function openLeaderboard() {
+            const tbody = document.getElementById('leaderboardBody');
+            tbody.innerHTML = '';
+            const scores = getScores();
+
+            if (scores.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center p-6 text-sawah-400 italic">Belum ada skor tercatat. Mainkan game sekarang!</td></tr>`;
+            } else {
+                scores.forEach((s, idx) => {
+                    const row = document.createElement('tr');
+                    row.className = idx < 3 ? "bg-sawah-800/80 font-bold" : "hover:bg-sawah-800/40";
+                    
+                    let rankBadge = `${idx + 1}`;
+                    if (idx === 0) rankBadge = `<i class="fa-solid fa-crown text-yellow-400 text-base"></i>`;
+                    else if (idx === 1) rankBadge = `<i class="fa-solid fa-medal text-slate-300"></i>`;
+                    else if (idx === 2) rankBadge = `<i class="fa-solid fa-medal text-amber-600"></i>`;
+
+                    row.innerHTML = `
+                        <td class="p-3">${rankBadge}</td>
+                        <td class="p-3 text-white">${s.name}</td>
+                        <td class="p-3 text-yellow-300 font-extrabold">${s.score}</td>
+                        <td class="p-3 text-emerald-300">${s.rats} ekor</td>
+                        <td class="p-3 text-xs text-sawah-400">${s.date}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            document.getElementById('leaderboardModal').classList.remove('hidden');
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('leaderboardModal').classList.add('hidden');
+        }
+
+        function promptExportToken() {
+            document.getElementById('tokenModal').classList.remove('hidden');
+            document.getElementById('inputToken').value = '';
+        }
+
+        function closeTokenModal() {
+            document.getElementById('tokenModal').classList.add('hidden');
+        }
+
+        function verifyTokenAndExport() {
+            const token = document.getElementById('inputToken').value.trim();
+            if (token === '1234') {
+                closeTokenModal();
+                exportToCSV();
+                showToast("Papan nilai berhasil diunduh (Format GSheet/CSV)!", "fa-file-excel text-green-400");
+            } else {
+                showToast("Token salah! Gunakan token guru 1234", "fa-lock text-red-400");
+            }
+        }
+
+        function exportToCSV() {
+            const scores = getScores();
+            if (scores.length === 0) {
+                showToast("Tidak ada data skor untuk diunduh.", "fa-circle-info text-yellow-400");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Peringkat,Nama Murid,Skor Akhir,Tikus Dimakan,Waktu Bermain\n";
+
+            scores.forEach((s, idx) => {
+                csvContent += `${idx + 1},"${s.name}",${s.score},${s.rats},"${s.date}"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Papan_Nilai_Ular_Sawah_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
