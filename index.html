@@ -82,10 +82,18 @@
         </div>
 
         <div class="flex items-center gap-2 pointer-events-auto">
+            <!-- HUD Nyawa -->
+            <div class="custom-glass px-3.5 py-2 rounded-xl flex flex-col items-center justify-center">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block">Nyawa</span>
+                <span id="hudLives" class="text-base md:text-lg tracking-wider">❤️ ❤️ ❤️</span>
+            </div>
+
+            <!-- HUD Skor -->
             <div class="custom-glass px-4 py-2 rounded-xl text-right">
                 <span class="text-[10px] uppercase font-bold text-slate-400 block">Skor PHT</span>
                 <span id="hudScore" class="text-xl md:text-2xl font-black text-amber-400">0</span>
             </div>
+            
             <button onclick="toggleAudio()" id="btnAudio" class="p-2.5 custom-glass rounded-xl hover:bg-slate-800 text-amber-400 transition">
                 🔊
             </button>
@@ -100,18 +108,31 @@
     <!-- Modal Quiz Modal -->
     <div id="quizModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
         <div class="custom-glass p-6 rounded-2xl max-w-lg w-full shadow-2xl border border-amber-500/40 text-left">
-            <div class="flex items-center justify-between mb-4">
-                <span class="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold rounded-full">
-                    🌾 PERTANYAAN ETIKA & PHT
+            <div class="flex items-center justify-between mb-3">
+                <span class="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold rounded-full flex items-center gap-1">
+                    🚨 SOS: SERANGAN MUSANG!
                 </span>
                 <span id="quizTimer" class="text-xs font-extrabold text-red-400">⏱ 15s</span>
             </div>
-            <h2 id="quizQuestion" class="text-base md:text-lg font-bold text-white mb-4 leading-relaxed">
+            <p class="text-xs text-amber-300 mb-2 font-semibold">Jawab pertanyaan PHT dengan benar untuk meloloskan ular tanpa kehilangan nyawa!</p>
+            <h2 id="quizQuestion" class="text-sm md:text-base font-bold text-white mb-3 leading-relaxed">
                 Soal pertanyaan PHT akan muncul di sini?
             </h2>
-            <div id="quizOptions" class="space-y-2.5">
-                <!-- Dynamic Options Buttons -->
+            <div id="quizOptions" class="space-y-2">
+                <!-- Dynamic Options Buttons (5 Opsi A-E) -->
             </div>
+        </div>
+    </div>
+
+    <!-- Modal Answer Result Feedback -->
+    <div id="quizResultModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+        <div id="quizResultBox" class="custom-glass p-6 rounded-2xl max-w-md w-full text-center border shadow-2xl">
+            <div id="quizResultIcon" class="text-4xl mb-2">✨</div>
+            <h3 id="quizResultTitle" class="text-xl font-black mb-2 text-white">JAWABAN BENAR!</h3>
+            <p id="quizResultMsg" class="text-xs md:text-sm text-slate-300 mb-5">Ular berhasil meloloskan diri dari sergapan Musang!</p>
+            <button onclick="closeQuizResult()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition">
+                ▶️ LANJUTKAN PERMAINAN
+            </button>
         </div>
     </div>
 
@@ -119,7 +140,7 @@
     <div id="gameOverModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md">
         <div class="custom-glass p-6 md:p-8 rounded-2xl max-w-2xl w-full shadow-2xl border border-emerald-500/30 text-center max-h-[90vh] overflow-y-auto">
             <h2 class="text-3xl font-black text-emerald-400 mb-1">PERMAINAN SELESAI</h2>
-            <p id="gameOverMsg" class="text-sm text-slate-300 mb-4">Ular tertangkap oleh musang!</p>
+            <p id="gameOverMsg" class="text-sm text-slate-300 mb-4">Ular kehabisan nyawa akibat ditangkap musang!</p>
 
             <div class="p-4 bg-slate-800/80 rounded-xl mb-6 border border-slate-700">
                 <p class="text-xs text-slate-400 uppercase font-bold">Skor Akhir Siswa</p>
@@ -194,6 +215,23 @@
                 gain.connect(this.ctx.destination);
                 osc.start(now);
                 osc.stop(now + 0.12);
+            }
+
+            playHurt() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.25);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
             }
 
             playWarning() {
@@ -359,7 +397,7 @@
 
         class Musang {
             constructor(canvasWidth, canvasHeight) {
-                this.radius = 32; // Significantly larger than rat
+                this.radius = 32;
                 this.speed = 3.2;
                 
                 const side = Math.floor(Math.random() * 4);
@@ -559,6 +597,7 @@
                 this.body = [];
                 this.length = 8;
                 this.isHiding = false;
+                this.invulnerableTimer = 0; // i-frame counter
 
                 for (let i = 0; i < this.length; i++) {
                     this.body.push({ x: x - i * 10, y: y });
@@ -581,9 +620,19 @@
 
                 // Check Stealth in Paddies
                 this.isHiding = paddies.some(p => Math.hypot(p.x - this.x, p.y - this.y) < 45);
+
+                // Invulnerability cooldown
+                if (this.invulnerableTimer > 0) {
+                    this.invulnerableTimer--;
+                }
             }
 
             draw(ctx) {
+                // Flash effect when hit / invulnerable
+                if (this.invulnerableTimer > 0 && Math.floor(Date.now() / 100) % 2 === 0) {
+                    return; // Skip rendering frame for blink effect
+                }
+
                 // Body Segments
                 for (let i = this.body.length - 1; i >= 0; i -= 4) {
                     const seg = this.body[i];
@@ -614,105 +663,226 @@
             }
         }
 
+        // 20 Soal PHT dengan 5 Pilihan Jawaban (A, B, C, D, E)
         const phtQuestions = [
             {
                 q: "Apa fungsi utama Ular Sawah dalam ekosistem pertanian?",
-                a: ["Predator alami pengendali populasi tikus", "Hama pembawa penyakit padi", "Penggali tanah penyerap air", "Pemakan daun padi muda"],
+                a: [
+                    "Predator alami pengendali populasi tikus",
+                    "Hama pembawa penyakit padi",
+                    "Penggali tanah penyerap air",
+                    "Pemakan daun padi muda",
+                    "Penyebar benih gulma persawahan"
+                ],
                 correct: 0
             },
             {
                 q: "Mengapa penggunaan racun kimia berlebihan merugikan petani?",
-                a: ["Membunuh musuh alami dan mencemari tanah", "Menyebabkan padi terlalu cepat panen", "Membuat air sawah menjadi bening", "Mengurangi jumlah rumput liar"],
+                a: [
+                    "Membunuh musuh alami dan mencemari tanah",
+                    "Menyebabkan padi terlalu cepat panen",
+                    "Membuat air sawah menjadi bening",
+                    "Mengurangi jumlah rumput liar",
+                    "Meningkatkan daya tahan tubuh tikus"
+                ],
                 correct: 0
             },
             {
                 q: "Tumbuhan Refugia (seperti Bunga Kertas) ditanam di pinggir sawah untuk...",
-                a: ["Menarik serangga musuh alami hama", "Sebagai hiasan estetika semata", "Menyerap sisa racun pupuk", "Menghalangi sinar matahari"],
+                a: [
+                    "Menarik serangga musuh alami hama",
+                    "Sebagai hiasan estetika semata",
+                    "Menyerap sisa racun pupuk",
+                    "Menghalangi sinar matahari",
+                    "Mengusir burung pipit pemakan padi"
+                ],
                 correct: 0
             },
             {
                 q: "Metode PHT memprioritaskan pengendalian hama secara...",
-                a: ["Biologi dan pemanfaatan musuh alami", "Penyemprotan pestisida setiap hari", "Pembakaran seluruh lahan sawah", "Pengeringan sawah secara total"],
+                a: [
+                    "Biologi dan pemanfaatan musuh alami",
+                    "Penyemprotan pestisida setiap hari",
+                    "Pembakaran seluruh lahan sawah",
+                    "Pengeringan sawah secara total",
+                    "Penggunaan pupuk kimia dosis tinggi"
+                ],
                 correct: 0
             },
             {
                 q: "Burung Hantu (Tyto alba) sangat bermanfaat bagi petani karena...",
-                a: ["Memangsa ratusan tikus dalam semalam", "Memakan serangga wereng cokelat", "Mengusir burung pemakan padi", "Membuat sarang di dalam lumpur"],
+                a: [
+                    "Memangsa ratusan tikus dalam semalam",
+                    "Memakan serangga wereng cokelat",
+                    "Mengusir burung pemakan padi",
+                    "Membuat sarang di dalam lumpur",
+                    "Menghasilkan pupuk alami di persawahan"
+                ],
                 correct: 0
             },
             {
                 q: "Sistem TBS (Trap Barrier System) digunakan untuk menangkap...",
-                a: ["Tikus sawah secara mekanis", "Ular hijau pemakan katak", "Burung pipit pemakan bulir", "Keong mas di dalam parit"],
+                a: [
+                    "Tikus sawah secara mekanis",
+                    "Ular hijau pemakan katak",
+                    "Burung pipit pemakan bulir",
+                    "Keong mas di dalam parit",
+                    "Serangga wereng yang terbang"
+                ],
                 correct: 0
             },
             {
                 q: "Pergiliran tanaman (rotasi tanaman) bertujuan untuk...",
-                a: ["Memutus siklus hidup hama tanaman", "Membuat tanah menjadi keras", "Menghemat penggunaan air hujan", "Mempercepat pertumbuhan gulma"],
+                a: [
+                    "Memutus siklus hidup hama tanaman",
+                    "Membuat tanah menjadi keras",
+                    "Menghemat penggunaan air hujan",
+                    "Mempercepat pertumbuhan gulma",
+                    "Menambah kadar asam pada tanah"
+                ],
                 correct: 0
             },
             {
                 q: "Katak dan Capung di sawah berperan penting sebagai...",
-                a: ["Predator pemakan serangga hama", "Hama pemakan akar padi", "Penyebab kebusukan daun", "Pencemar air irigasi"],
+                a: [
+                    "Predator pemakan serangga hama",
+                    "Hama pemakan akar padi",
+                    "Penyebab kebusukan daun",
+                    "Pencemar air irigasi",
+                    "Pengganggu pertumbuhan bibit padi"
+                ],
                 correct: 0
             },
             {
                 q: "Pengamatan berkala (monitoring) di sawah dilakukan untuk...",
-                a: ["Mengetahui ambang ekonomi populasi hama", "Menghitung jumlah daun padi", "Mengukur kedalaman lumpur sawah", "Menentukan warna bunga refugia"],
+                a: [
+                    "Mengetahui ambang ekonomi populasi hama",
+                    "Menghitung jumlah daun padi",
+                    "Mengukur kedalaman lumpur sawah",
+                    "Menentukan warna bunga refugia",
+                    "Menghitung debit air irigasi bulanan"
+                ],
                 correct: 0
             },
             {
                 q: "Dampak hilangnya populasi ular sawah akibat diburu adalah...",
-                a: ["Populasi tikus melonjak drastis", "Hasil panen padi meningkat pesat", "Sawah bebas dari serangga", "Tanah menjadi lebih subur"],
+                a: [
+                    "Populasi tikus melonjak drastis",
+                    "Hasil panen padi meningkat pesat",
+                    "Sawah bebas dari serangga",
+                    "Tanah menjadi lebih subur",
+                    "Populasi burung pipit menurun"
+                ],
                 correct: 0
             },
             {
                 q: "Serangga Parasitoid bermanfaat karena...",
-                a: ["Menumpangi dan mematikan larva hama", "Memakan daun padi hingga habis", "Membuat sarang di batang padi", "Menyerap sari buah padi"],
+                a: [
+                    "Menumpangi dan mematikan larva hama",
+                    "Memakan daun padi hingga habis",
+                    "Membuat sarang di batang padi",
+                    "Menyerap sari buah padi",
+                    "Membuat akar padi menjadi membusuk"
+                ],
                 correct: 0
             },
             {
                 q: "Keong Mas dapat dikendalikan secara ramah lingkungan dengan...",
-                a: ["Mengumpulkan telur merahnya secara manual", "Meningkatkan dosis pestisida kimia", "Membakar jerami di atas tanah", "Menebar racun arsenik di air"],
+                a: [
+                    "Mengumpulkan telur merahnya secara manual",
+                    "Meningkatkan dosis pestisida kimia",
+                    "Membakar jerami di atas tanah",
+                    "Menebar racun arsenik di air",
+                    "Menutup saluran irigasi selamanya"
+                ],
                 correct: 0
             },
             {
                 q: "Apa yang dimaksud dengan Musuh Alami Hama?",
-                a: ["Organisme yang memangsa atau memarasit hama", "Petani yang mengolah tanah sawah", "Pestisida buatan pabrik kimia", "Cuaca ekstrem saat musim hujan"],
+                a: [
+                    "Organisme yang memangsa atau memarasit hama",
+                    "Petani yang mengolah tanah sawah",
+                    "Pestisida buatan pabrik kimia",
+                    "Cuaca ekstrem saat musim hujan",
+                    "Tanaman pengganggu di sekitar sawah"
+                ],
                 correct: 0
             },
             {
                 q: "Mengapa penangkapan ular sawah secara liar harus dilarang?",
-                a: ["Merusak keseimbangan rantai makanan sawah", "Ular menyebabkan tanah sawah retak", "Ular menyerap nutrisi dari padi", "Ular mengurangi debit air sawah"],
+                a: [
+                    "Merusak keseimbangan rantai makanan sawah",
+                    "Ular menyebabkan tanah sawah retak",
+                    "Ular menyerap nutrisi dari padi",
+                    "Ular mengurangi debit air sawah",
+                    "Ular memangsa batang padi yang muda"
+                ],
                 correct: 0
             },
             {
                 q: "Laba-laba di ekosistem persawahan bertindak sebagai...",
-                a: ["Predator pemangsa wereng dan ngengat", "Hama perusak jaringan batang", "Penyebar spora jamur busuk", "Pemakan bulir padi muda"],
+                a: [
+                    "Predator pemangsa wereng dan ngengat",
+                    "Hama perusak jaringan batang",
+                    "Penyebar spora jamur busuk",
+                    "Pemakan bulir padi muda",
+                    "Penggali lubang irigasi sawah"
+                ],
                 correct: 0
             },
             {
                 q: "Pestisida Nabati dibuat dari bahan alam seperti...",
-                a: ["Daun mimba, serai, dan bawang putih", "Campuran oli bekas dan bensin", "Deterjen detergen pekat", "Limbah plastik cair"],
+                a: [
+                    "Daun mimba, serai, dan bawang putih",
+                    "Campuran oli bekas dan bensin",
+                    "Deterjen cair pekat",
+                    "Limbah plastik cair",
+                    "Air garam campur alkohol"
+                ],
                 correct: 0
             },
             {
                 q: "Tujuan sanitasi lingkungan sawah adalah...",
-                a: ["Membersihkan gulma tempat persembunyan hama", "Menghilangkan seluruh tanaman padi", "Membakar tanah hingga kering", "Membuang lumpur keluar sawah"],
+                a: [
+                    "Membersihkan gulma tempat persembunyan hama",
+                    "Menghilangkan seluruh tanaman padi",
+                    "Membakar tanah hingga kering",
+                    "Membuang lumpur keluar sawah",
+                    "Membunuh seluruh cacing tanah"
+                ],
                 correct: 0
             },
             {
                 q: "Wereng Cokelat merusak tanaman padi dengan cara...",
-                a: ["Menghisap cairan batang tanaman padi", "Memotong akar padi di dalam tanah", "Memakan bulir padi hingga habis", "Mencabut bibit padi muda"],
+                a: [
+                    "Menghisap cairan batang tanaman padi",
+                    "Memotong akar padi di dalam tanah",
+                    "Memakan bulir padi hingga habis",
+                    "Mencabut bibit padi muda",
+                    "Membuat sarang di dalam lumpur sawah"
+                ],
                 correct: 0
             },
             {
                 q: "Varietas Tahan Hama (VTH) adalah...",
-                a: ["Padi yang secara alami resisten serangga", "Tanaman rumput liar pembatas sawah", "Pupuk buatan berkadar tinggi", "Alat penyemprot racun otomatis"],
+                a: [
+                    "Padi yang secara alami resisten serangga",
+                    "Tanaman rumput liar pembatas sawah",
+                    "Pupuk buatan berkadar tinggi",
+                    "Alat penyemprot racun otomatis",
+                    "Pestisida sintetis dosis tinggi"
+                ],
                 correct: 0
             },
             {
                 q: "Prinsip dasar PHT yang utama adalah...",
-                a: ["Budi daya tanaman sehat dan pelestarian musuh alami", "Penggunaan racun sejak awal tanam", "Pembersihan total seluruh hewan di sawah", "Penebangan pohon di sekitar sawah"],
+                a: [
+                    "Budi daya tanaman sehat dan pelestarian musuh alami",
+                    "Penggunaan racun sejak awal tanam",
+                    "Pembersihan total seluruh hewan di sawah",
+                    "Penebangan pohon di sekitar sawah",
+                    "Pengeringan lahan sawah secara terus menerus"
+                ],
                 correct: 0
             }
         ];
@@ -722,6 +892,7 @@
         let gameState = 'LOGIN'; // LOGIN, PLAYING, QUIZ, GAMEOVER
         let studentData = { nama: '', kelas: '', absen: '' };
         let score = 0;
+        let lives = 3; // 3 Nyawa Ular Sawah
         let snake;
         let rats = [];
         let musangs = [];
@@ -769,6 +940,15 @@
             canvas.height = window.innerHeight;
         }
 
+        function updateLivesDisplay() {
+            let hearts = '';
+            for (let i = 0; i < lives; i++) {
+                hearts += '❤️ ';
+            }
+            if (lives === 0) hearts = '💀';
+            document.getElementById('hudLives').innerText = hearts.trim();
+        }
+
         function startGame(e) {
             e.preventDefault();
             soundFX.init();
@@ -786,6 +966,9 @@
 
         function restartGame() {
             score = 0;
+            lives = 3;
+            updateLivesDisplay();
+
             document.getElementById('hudScore').innerText = score;
             document.getElementById('gameOverModal').classList.add('hidden');
             document.getElementById('hudMusangAlert').classList.add('hidden');
@@ -799,14 +982,13 @@
             paddies = [];
             usedQuestionIndices = [];
 
-            // Generate Paddies Grid (Denser spacing with extra row reaching the bottom)
+            // Generate Paddies Grid
             const marginX = 70;
             const marginY = 70;
             const availableW = Math.max(200, canvas.width - marginX * 2);
             const availableH = Math.max(200, canvas.height - marginY * 2);
 
             const numCols = Math.max(3, Math.floor(availableW / 160));
-            // Menambah baris vertical (+1 baris) agar lebih rapat & menjangkau area bawah
             const numRows = Math.max(4, Math.floor(availableH / 130) + 1);
 
             const xStep = numCols > 1 ? availableW / (numCols - 1) : availableW;
@@ -873,7 +1055,7 @@
                 // Update Snake
                 snake.update(mouseX, mouseY, paddies);
 
-                // Update Rats & Eat Check
+                // Update Rats & Eat Check (Hanya menambah skor, TIDAK mengurangi nyawa)
                 for (let i = rats.length - 1; i >= 0; i--) {
                     const r = rats[i];
                     r.update(canvas.width, canvas.height);
@@ -883,12 +1065,6 @@
                         soundFX.playEat();
                         score += 10;
                         document.getElementById('hudScore').innerText = score;
-
-                        // Trigger Quiz Every 30 points
-                        if (score > 0 && score % 30 === 0) {
-                            triggerQuiz();
-                            break;
-                        }
                     }
                 }
 
@@ -903,8 +1079,14 @@
                         continue;
                     }
 
-                    if (!snake.isHiding && Math.hypot(snake.x - m.x, snake.y - m.y) < snake.radius + m.radius * 0.8) {
-                        triggerGameOver('Ular tertangkap oleh kawanan Musang!');
+                    // Disergap Musang -> Beri kesempatan menjawab kuis untuk meloloskan diri
+                    if (!snake.isHiding && snake.invulnerableTimer === 0 && Math.hypot(snake.x - m.x, snake.y - m.y) < snake.radius + m.radius * 0.8) {
+                        m.x += (m.x - snake.x) * 2.5;
+                        m.y += (m.y - snake.y) * 2.5;
+                        m.isRetreating = true; // Musang menjauh setelah menyergap
+                        snake.invulnerableTimer = 180; // Waktu kebal sementara
+
+                        triggerQuiz();
                         break;
                     }
                 }
@@ -934,17 +1116,18 @@
             const qData = phtQuestions[currentQuizIndex];
             document.getElementById('quizQuestion').innerText = qData.q;
 
-            // Shuffle Answers
+            // Shuffle 5 Answers
+            const optionLabels = ['A', 'B', 'C', 'D', 'E'];
             const options = qData.a.map((text, idx) => ({ text, isCorrect: idx === qData.correct }));
             options.sort(() => Math.random() - 0.5);
 
             const optionsContainer = document.getElementById('quizOptions');
             optionsContainer.innerHTML = '';
 
-            options.forEach(opt => {
+            options.forEach((opt, idx) => {
                 const btn = document.createElement('button');
-                btn.className = "w-full p-3 bg-slate-800 hover:bg-emerald-600/30 border border-slate-600 hover:border-emerald-500 rounded-xl text-left text-white text-xs md:text-sm font-semibold transition flex items-center gap-3";
-                btn.innerHTML = `<span class="p-1.5 bg-slate-700 rounded-lg text-emerald-400 font-bold">▶</span> <span>${opt.text}</span>`;
+                btn.className = "w-full p-2.5 bg-slate-800 hover:bg-emerald-600/30 border border-slate-600 hover:border-emerald-500 rounded-xl text-left text-white text-xs md:text-sm font-semibold transition flex items-center gap-2.5";
+                btn.innerHTML = `<span class="px-2 py-0.5 bg-slate-700 rounded-md text-emerald-400 font-bold text-xs">${optionLabels[idx]}</span> <span>${opt.text}</span>`;
                 btn.onclick = () => handleQuizAnswer(opt.isCorrect);
                 optionsContainer.appendChild(btn);
             });
@@ -968,14 +1151,44 @@
             clearInterval(quizTimerInterval);
             document.getElementById('quizModal').classList.add('hidden');
 
+            const resultBox = document.getElementById('quizResultBox');
+            const resultIcon = document.getElementById('quizResultIcon');
+            const resultTitle = document.getElementById('quizResultTitle');
+            const resultMsg = document.getElementById('quizResultMsg');
+
             if (isCorrect) {
                 soundFX.playQuizCorrect();
-                score += 25;
+                score += 15;
                 document.getElementById('hudScore').innerText = score;
+
+                resultBox.className = "custom-glass p-6 rounded-2xl max-w-md w-full text-center border border-emerald-500/50 shadow-2xl";
+                resultIcon.innerText = "🎉";
+                resultTitle.className = "text-xl font-black mb-2 text-emerald-400";
+                resultTitle.innerText = "JAWABAN BENAR!";
+                resultMsg.innerText = "Ular berhasil meloloskan diri dari musang tanpa kehilangan nyawa! +15 Poin PHT.";
             } else {
                 soundFX.playQuizWrong();
+                soundFX.playHurt();
+                lives--;
+                updateLivesDisplay();
+
+                if (lives <= 0) {
+                    triggerGameOver('Ular kehabisan nyawa akibat ditangkap oleh kawanan musang!');
+                    return;
+                }
+
+                resultBox.className = "custom-glass p-6 rounded-2xl max-w-md w-full text-center border border-red-500/50 shadow-2xl";
+                resultIcon.innerText = "💥";
+                resultTitle.className = "text-xl font-black mb-2 text-red-400";
+                resultTitle.innerText = "JAWABAN SALAH / WAKTU HABIS!";
+                resultMsg.innerText = `Jawaban kurang tepat! Ular terkena gigitan musang dan kehilangan 1 nyawa. Sisa nyawa: ${lives}`;
             }
 
+            document.getElementById('quizResultModal').classList.remove('hidden');
+        }
+
+        function closeQuizResult() {
+            document.getElementById('quizResultModal').classList.add('hidden');
             gameState = 'PLAYING';
             soundFX.startBGM();
         }
